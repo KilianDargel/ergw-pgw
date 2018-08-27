@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: ergw-gtp-c-node-{{ template "ergw.fullname" . }}
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8080"
+  labels:
+    app: {{ template "ergw.name" . }}
+    chart: {{ template "ergw.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+{{- if .Values.labels }}
+{{ toYaml .Values.labels | indent 4 }}
+{{- end }} 
+spec:
+  selector:
+    component: controlplane
+    app: {{ template "ergw.name" . }}
+    release: {{ .Release.Name }}
+  type: ClusterIP
+  clusterIP: None
+  ports:
+  - name: prom-metrics
+    port: 8080
+    targetPort: 8080
+

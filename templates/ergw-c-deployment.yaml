@@ -1,0 +1,90 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: ergw-gtp-c-node-{{ template "ergw.fullname" . }}
+  labels:
+    app: {{ template "ergw.name" . }}
+    chart: {{ template "ergw.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+spec:
+  replicas: {{ .Values.replicaCpod }}
+  selector:
+    matchLabels:
+      component: controlplane
+      app: {{ template "ergw.name" . }}
+  template:
+    metadata:
+      labels:
+        app: {{ template "ergw.name" . }}
+        release: {{ .Release.Name }}
+        component: controlplane
+        vxlan.openvnf.org: "true"
+      annotations:
+        vxlan.openvnf.org/networks: |
+          {{ .Values.NIC.grx }}
+            ip={{ .Values.Cnode.grx }}
+          {{ .Values.NIC.sxb }}
+            ip={{ .Values.Cnode.sxb }}
+    spec:
+      initContainers:
+      - name: vxlan-controller-agent-init
+        image: {{ .Values.VXLan.image.repository }}:{{ .Values.VXLan.image.tag }}
+        securityContext:
+          capabilities:
+            add: ["NET_ADMIN"]
+      - name: network-setup
+        image: {{ .Values.Nettools.image.repository }}
+        securityContext:
+          privileged: True
+          capabilities:
+            add: ["NET_ADMIN"]
+        command: ["/bin/sh"]
+        args:
+        - -c
+        - |
+          # ip a flush dev grx0
+          # ip a flush dev sxb0
+          set -xe
+          ip a
+          # ip a add {{ .Values.Cnode.grx }} dev {{ .Values.NIC.grx }}
+          # ip a add {{ .Values.Cnode.sxb }} dev {{ .Values.NIC.sxb }}
+          ip r add {{ .Values.k8sNetwork }} via {{ .Values.CGWnode.defaultGW1 }}
+          ip r change default via {{ .Values.Cnode.grxGW }}
+          ip link set dev eth0 mtu 1440
+      - name: network-init
+        image: {{ .Values.Nettools.image.repository }}:{{ .Values.Nettools.image.tag }}
+        securityContext:
+          capabilities:
+            add: ["NET_ADMIN"]
+        command:
+        - bash
+        - -c
+        - |
+          set -x
+          # set GRO settings off
+          ethtool -K {{ .Values.NIC.grx }} gro off
+          ethtool -K {{ .Values.NIC.sxb }} gro off
+      containers:
+      - name: vxlan-controller-agent
+        image: {{ .Values.VXLan.image.repository }}:{{ .Values.VXLan.image.tag }}
+        securityContext:
+          capabilities:
+            add: ["NET_ADMIN"]
+        resources:
+          requests:
+            cpu: "{{ .Values.VXLan.resources.cpu }}"
+      - name: ergw-gtp-c-node
+        image: {{ .Values.Cnode.image.repository }}:{{ .Values.Cnode.image.tag }}
+        #command: ["/bin/sh"]
+        #args: ["-c", "while true; do echo hello; sleep 3000;done"]
+        imagePullPolicy: {{ .Values.Cnode.image.pullPolicy }}
+        ports:
+          - containerPort: 8080
+        volumeMounts:
+        - name: ergw-gtp-c-config-{{ template "ergw.fullname" . }}
+          mountPath: /etc/ergw-gtp-c-node/
+      volumes:
+      - name: ergw-gtp-c-config-{{ template "ergw.fullname" . }}
+        configMap:
+          name: ergw-gtp-c-configmap-{{ template "ergw.fullname" . }}

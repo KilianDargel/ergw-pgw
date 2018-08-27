@@ -1,0 +1,122 @@
+# Default values for apn.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+k8sNetwork: 10.233.0.0/16
+
+NIC:
+  grx: grx0
+  sxb: sxb0
+  sgi: sgi0
+  inet: inet0
+
+labels:
+  apn: travelping
+  stage: ""
+
+APN:
+  HostName: "travelping"
+  DomainName: "test"
+  tld: "sk"
+
+####################  Replica Count  ####################
+replicaCount: 1
+replicaVPPpod: 1 # Replica setting for VPP,CGI,CGW PODS
+replicaCGWpod: 1
+replicaCpod: 1
+
+####################  Container  ####################
+
+VPP:
+  image:
+    repository: ergw/vpp:feature-upf_8e0c008702fcf6b1bf0e689c51c8e8a634ecd561  # We should use here stable version and not taged version, taged version will   # We should use here stable version and not taged version, taged version will be used in helm-values files of the APN.
+    pullPolicy: Always
+  grxGW: 172.20.10.1                          # IP of grx Gateway NIC
+  grx: 172.20.10.60/24                     # IP of grx NIC
+  CGWsgi: 172.20.11.1                         # IP of grx Gateway NIC
+  sgi: 172.22.16.2/24                         # IP of cgi NIC
+  sgiIPv6: fd71:357a:a82e:1                   # IPv6 of cgi NIC
+  sgiIPv6Network: fd71:357a:a82e:1::2/64      # IPv6 of cgi NIC
+  sxb: 172.21.13.205/28                       # IP of sxb NIC
+  CGWcgi: 172.22.16.1                         # IP of cgi NIC (optional)
+
+Cnode:
+  image:
+    repository: ergw/ergw-gtp-c-node
+    tag: 2.0.2
+    pullPolicy: Always
+  grxGW: 172.20.10.1                          # IP of grx Gateway NIC
+  grx: 172.20.10.153/24                       # IP of grx NIC
+  sxb: 172.21.13.204/28                       # IP of sxb NIC
+  plmnID: <<"232">>,<<"03">>
+  lager:
+    lagerConsoleBackendLevel: error
+
+CGWnode:
+  image:
+    repository: dansl1982/vpp
+    pullPolicy: Always
+  cgi: 172.22.16.1/24
+  K8sRoute: 10.10.10.0/24
+  sgiIPv6: "fd71:357a:a82e:"
+  ExternalRoute: 172.23.10.17/27
+  defaultGW: 172.23.10.1
+  inetRouteDefault: 172.23.10.1
+  defaultGW1: 169.254.1.1
+  IPv6CGW: "2a07:db01:"
+
+VXLan:
+  image:
+    repository: openvnf/kube-vxlan-controller-agent
+    tag: 2.1.0
+    pullPolicy: IfNotPresent
+  resources:
+    cpu: 10m
+
+sgsnemu:
+  automode: true
+  replicas: 1
+  image:
+    repository: ergw/sgsnemu
+    tag: master_b1900328f524dd0014ba54c86754ff269aa47cf3
+  pullPolicy: IfNotPresent
+  listenIP: 172.20.10.155                     # IP of grx NIC
+  remoteIP: 172.20.10.153                   # IP of Cnode grx
+
+Nettools:
+  image:
+    repository: travelping/nettools
+    tag: 1.7.0
+    pullPolicy: IfNotPresent
+  resources:
+    cpu: 10m
+
+vrfs:
+  pools:
+    IPv4: "{10, 10, 10, 1}, {10, 10, 255, 254}, 32"
+    IPv61: "{16#2a07. 16#db01. 0. 16#0100. 0. 0. 0. 0"
+    IPv62: "16#2a07. 16#db01. 0. 16#01ff. 16#ffff. 16#ffff. 16#ffff. 16#ffff}. 64"
+  MSPrimaryDNS: 8.8.8.8
+  MSSecondaryDNS: 8.8.4.4
+  MSPrimaryNBNS: 127.0.0.1
+  MSPrimaryNBNS: 127.0.0.1
+  DNSServerIPv6AddressPart1: "16#2001. 16#4860. 16#4860. 0. 0. 0. 0. 16#8888"
+  DNSServerIPv6AddressPart2: "16#2001, 16#4860, 16#4860, 0, 0, 0, 0, 16#8844"
+
+resources: {}
+  # We usually recommend not to specify default resources and to leave this as a conscious
+  # choice for the user. This also increases chances charts run on environments with little
+  # resources, such as Minikube. If you do want to specify resources, uncomment the following
+  # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
+  # limits:
+  #  cpu: 100m
+  #  memory: 128Mi
+  # requests:
+  #  cpu: 100m
+  #  memory: 128Mi
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}

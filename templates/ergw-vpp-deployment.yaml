@@ -1,0 +1,78 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: ergw-vpp-u-node-{{ template "ergw.fullname" . }}
+  labels:
+    app: {{ template "ergw.name" . }}
+    chart: {{ template "ergw.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+spec:
+  replicas: {{ .Values.replicaVPPpod }}
+  selector:
+    matchLabels:
+      app: {{ template "ergw.chart" . }}
+  template:
+    metadata:
+      labels:
+        app: {{ template "ergw.chart" . }}
+        vxlan.openvnf.org: "true"
+      annotations:
+        vxlan.openvnf.org/networks: {{ .Values.NIC.grx }},{{ .Values.NIC.sxb }},{{ .Values.NIC.sgi }}
+    spec:
+      initContainers:
+      - name: vxlan-controller-agent-init
+        image: {{ .Values.VXLan.image.repository }}:{{ .Values.VXLan.image.tag }}
+        securityContext:
+          capabilities:
+            add: ["NET_ADMIN"]
+      - name: network-setup
+        image: {{ .Values.Nettools.image.repository }}
+        securityContext:
+          privileged: True
+        capabilities:
+          add:
+          - NET_ADMIN
+      - name: network-init
+        image: {{ .Values.Nettools.image.repository }}:{{ .Values.Nettools.image.tag }}
+        securityContext:
+          capabilities:
+            add: ["NET_ADMIN"]
+        command:
+        - bash
+        - -c
+        - |
+          set -x
+          # set GRO settings off
+          ethtool -K {{ .Values.NIC.grx }} gro off
+          ethtool -K {{ .Values.NIC.sgi }} gro off
+          ethtool -K {{ .Values.NIC.sxb }} gro off
+      containers:
+      - name: vxlan-controller-agent
+        image: {{ .Values.VXLan.image.repository }}:{{ .Values.VXLan.image.tag }}
+        securityContext:
+          capabilities:
+            add:
+            - NET_ADMIN
+        resources:
+          requests:
+            cpu: "{{ .Values.VXLan.resources.cpu }}"
+      - name: vpp-u-node
+        image: {{ .Values.VPP.image.repository }}
+        command: ["/usr/bin/vpp"]
+        args: ["-c", "/etc/vpp/startup.conf"]
+        stdin: true
+        tty: true
+        imagePullPolicy: {{ .Values.VPP.image.pullPolicy }}
+        securityContext:
+          privileged: True
+        capabilities:
+          add:
+          - NET_ADMIN
+        volumeMounts:
+        - name: ergw-vpp-u-config-{{ template "ergw.fullname" . }}
+          mountPath: /etc/vpp/
+      volumes:
+      - name: ergw-vpp-u-config-{{ template "ergw.fullname" . }}
+        configMap:
+          name: ergw-vpp-u-configmap-{{ template "ergw.fullname" . }}

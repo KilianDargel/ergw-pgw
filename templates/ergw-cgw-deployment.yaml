@@ -1,0 +1,122 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: ergw-cgi-{{ template "ergw.fullname" . }}
+  labels:
+    app: {{ template "ergw.name" . }}
+    chart: {{ template "ergw.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+spec:
+  strategy:
+    type: Recreate
+    rollingUpdate:
+  replicas: {{ .Values.replicaCGWpod }}
+  selector:
+    matchLabels:
+      app: {{ template "ergw.chart" . }}
+  template:
+    metadata:
+      labels:
+        app: {{ template "ergw.chart" . }}
+        vxlan.openvnf.org: "true"
+      annotations:
+        vxlan.openvnf.org/networks: |
+          {{ .Values.NIC.sgi }}
+            ip={{ .Values.CGWnode.cgi }}
+          {{ .Values.NIC.inet }}
+            ip={{ .Values.CGWnode.ExternalRoute }}
+    spec:
+      terminationGracePeriodSeconds: 0
+      initContainers:
+      - name: vxlan-controller-agent-init
+        image: {{ .Values.VXLan.image.repository }}:{{ .Values.VXLan.image.tag }}
+        securityContext:
+          capabilities:
+            add: ["NET_ADMIN"]
+      - name: network-init
+        image: {{ .Values.Nettools.image.repository }}:{{ .Values.Nettools.image.tag }}
+        securityContext:
+          privileged: True
+          capabilities:
+            add: ["NET_ADMIN"]
+        volumeMounts:
+        - name: podshare-{{ template "ergw.fullname" . }}
+          mountPath: /mnt/podshare
+        command:
+        - bash
+        - -c
+        - |
+          #set -xe
+          set -x
+          # set GRO settings off
+          ethtool -K {{ .Values.CGWnode.inet }} gro off
+          ethtool -K {{ .Values.CGWnode.sgi }} gro off
+          # prepare configuration
+          echo "Setting up border transfernet... "
+          ip addr add {{ .Values.CGWnode.cgi }} dev {{ .Values.NIC.sgi }}
+          ip addr show dev {{ .Values.NIC.sgi }}
+          ip addr add {{ .Values.CGWnode.sgiIPv6 }}0001::1/64 dev {{ .Values.NIC.sgi }}
+
+          echo "Setting up routes..."
+          # ip a add {{ .Values.CGWnode.ExternalRout }} dev {{ .Values.NIC.inet }}
+          # ip r add {{ .Values.k8sNetwork }} via {{ .Values.CGWnode.defaultGW1}}
+          # ip r a {{ .Values.CGWnode.K8sRoute }} via {{ splitList "/" .Values.VPP.sgi | first  }}
+          ip r change default via {{ .Values.CGWnode.defaultGW }}
+          iptables -t nat -A POSTROUTING -o inet0 -j MASQUERADE
+
+          echo "Setting up IPv6"
+          ip -6 a add {{ .Values.CGWnode.IPv6CGW }}:2/64 dev {{ .Values.NIC.inet }}
+          ip -6 r add default via {{ .Values.CGWnode.IPv6CGW }}:1
+          ip -6 r a {{ .Values.CGWnode.IPv6CGW }}0:0100::/56 via {{ .Values.CGWnode.sgiIPv6 }}0001::2
+          ip -6 r
+          echo "Network-init completed."
+      containers:
+      - name: standby
+        image: {{ .Values.Nettools.image.repository }}:{{ .Values.Nettools.image.tag }}
+        securityContext:
+        capabilities:
+          add: ["NET_ADMIN", "SYS_MODULE"]
+        command: [ "/bin/bash", "-c", "--" ]
+        args: [ "while true; do sleep 30; done;" ]
+        volumeMounts:
+        - name: podshare-{{ template "ergw.fullname" . }}
+          mountPath: /mnt/podshare
+        resources:
+          requests:
+            cpu: "{{ .Values.Nettools.resources.cpu }}"
+      - name: vxlan-controller-agent
+        image: {{ .Values.VXLan.image.repository }}:{{ .Values.VXLan.image.tag }}
+        securityContext:
+        capabilities:
+          add:
+          - NET_ADMIN
+        resources:
+          requests:
+            cpu: "{{ .Values.VXLan.resources.cpu }}"
+      - name: ping-prober # permanent ping
+        image: alpine:latest
+        command:
+        - sh
+        - -c
+        - |
+          while sleep 5; do
+            printf "\n\n# Pinging SGi IPv4: " ; date -Is
+            ping -c 3 -w 10 {{  splitList "/" .Values.VPP.sgi | first }} | tee -a /mnt/podshare/current-ping.log
+
+            printf "\n\n# Pinging SGi IPv6: " ; date -Is
+            ping6 -c 3 -w 10 {{ .Values.CGWnode.sgiIPv6 }}0001::2 | tee -a /mnt/podshare/current-ping.log
+
+            # make it atomic:
+            mv /mnt/podshare/current-ping.log /mnt/podshare/last-ping.log
+          done
+        volumeMounts:
+        - name: podshare-{{ template "ergw.fullname" . }}
+          mountPath: /mnt/podshare
+        resources:
+          requests:
+            cpu: "{{ .Values.VXLan.resources.cpu }}"
+      volumes:
+      - name: podshare-{{ template "ergw.fullname" . }}
+        emptyDir: {}
+      - name: replicapool-{{ template "ergw.fullname" . }}

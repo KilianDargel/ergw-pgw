@@ -1,0 +1,67 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ergw-vpp-u-configmap-{{ template "ergw.fullname" . }}
+  namespace: default
+  labels:
+    app: {{ template "ergw.name" . }}
+    chart: {{ template "ergw.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+data:
+  startup.conf: |
+    unix {
+    nodaemon
+    log /tmp/vpp.log
+    full-coredump
+    gid vpp
+    interactive
+    cli-listen localhost:5002
+    exec /etc/vpp/init.conf
+    }
+
+    api-trace {
+    on
+    }
+
+    api-segment {
+    gid vpp
+    }
+
+    plugins {
+    path /usr/lib/vpp_plugins/
+    plugin dpdk_plugin.so { disable }
+    plugin gtpu_plugin.so { disable }
+    }
+  init.conf: |
+    create host-interface name {{ .Values.NIC.grx }}
+    set interface ip table host-{{ .Values.NIC.grx }} 1
+    set interface ip address host-{{ .Values.NIC.grx }} {{ .Values.VPP.grx }}
+    set interface state host-{{ .Values.NIC.grx }} up
+
+    create host-interface name {{ .Values.NIC.sgi }}
+    set interface ip table host-{{ .Values.NIC.sgi }} 2
+    set interface ip6 table host-{{ .Values.NIC.sgi }} 2
+    set interface ip address host-{{ .Values.NIC.sgi }} {{ .Values.VPP.sgi }}
+    set interface ip address host-{{ .Values.NIC.sgi }} {{ .Values.VPP.sgiIPv6Network }}
+    set interface state host-{{ .Values.NIC.sgi }} up
+
+    create host-interface name {{ .Values.NIC.sxb }}
+    set int ip address host-{{ .Values.NIC.sxb }} {{ .Values.VPP.sxb }}
+    set int state host-{{ .Values.NIC.sxb }} up
+
+    ip route add 0.0.0.0/0 table 1 via {{ .Values.VPP.grxGW }} host-{{ .Values.NIC.grx }}
+    ip route add 0.0.0.0/0 table 2 via {{ .Values.VPP.CGWsgi }} host-{{ .Values.NIC.sgi }}
+    ip route add ::/0 table 2 via {{ .Values.VPP.sgiIPv6 }}::1 host-{{ .Values.NIC.sgi }}
+
+    upf nwi create label cp
+    upf nwi set gtpu address label cp {{ splitList "/" .Values.VPP.sxb | first }} teid 0x80000000/2
+    upf nwi set interface type label cp cp interface host-{{ .Values.NIC.sxb }}
+    upf nwi create label epc
+    upf nwi set gtpu address label epc {{ splitList "/" .Values.VPP.grx | first }} teid 0x80000000/2
+    upf nwi set interface type label epc access interface host-{{ .Values.NIC.grx }}
+    upf nwi create label sgi
+    upf nwi set interface type label sgi sgi interface host-{{ .Values.NIC.sgi }}
+
+    # debug traces:
+    # trace add af-packet-input 100
