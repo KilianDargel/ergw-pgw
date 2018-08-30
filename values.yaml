@@ -74,7 +74,7 @@ VXLan:
     cpu: 10m
 
 sgsnemu:
-  automode: true
+  automode: false
   replicas: 1
   image:
     repository: ergw/sgsnemu

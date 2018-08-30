@@ -155,7 +155,8 @@ Received create PDP context response. IP address: 10.10.155.169
 ```
 
 ## Testing throughput with iperf.
-`iperf3` requires both a client as well as a server somewhere in the cluster. Containers based on [travelping/nettools](https://github.com/travelping/docker-nettools) can be used for this. Two that are deployed through helm right away are:
+The tun interface is only available while sgsnemu is running.  Throughput can be tested on the VXLan interfaces using iperf then. `iperf3` requires both a client as well as a server somewhere in the cluster. Containers based on [travelping/nettools](https://github.com/travelping/docker-nettools) can be used for this. Two containers, that are deployed through helm right away are:
 - `iperf-probe` in the sgsnemu-pod can run `iperf3 -c 172.22.16.1 -M 1320 -V` and
 - `standby` in the cgw-pod can run `iperf3 -d -s -B 172.22.16.1` and listen on its sgi0 VXLan address.
-Make sure that the IP of the iperf server is reachable through the GTP tunnel. Sgsnemu will install a default route through the tun interface, which takes care of the interface selection for iperf. Client and server mode can be switched around at will.
+Make sure that the IP of the iperf server is reachable through the GTP tunnel. So keep in mind that the sgsnemu-container should be actively handling the context before you are trying to reach something from the iperf-probe-container.
+Sgsnemu will install a default route through the tun interface, which takes care of the interface selection for iperf. Client and server mode can be switched around at will.
