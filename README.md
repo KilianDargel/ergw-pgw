@@ -8,35 +8,36 @@ Additionally an SGSN emulator is included to test against the GGSN in the kubern
 
 ## Network topology
 
-A demo apn implements the following network topology, requiring Data- + User-plane and Connectivity Gateway.
-![Demoapn](images/demo apn.png)
+A demo apn implements the following network topology, requiring a Data-, User-plane and Connectivity Gateway.
+![Demoapn](https://github.com/KilianDargel/ergw-pgw/blob/master/images/demoapn.png)
 This is the full list of containers:
-1. ergw-c-Deployment.yaml
-  1.1. vxlan-controller-agent-init
-  1.1. network-setup
-  1.1. network-init
-  1.2. vxlan-controller-agent
-  1.2. ergw-gtp-c-node
+- ergw-c-Deployment.yaml
+  - vxlan-controller-agent-init
+  - network-setup
+  - network-init
+  - vxlan-controller-agent
+  - ergw-gtp-c-node
 
-2. ergw-vpp-deployment.yaml
-  2.1. vxlan-controller-agent-init
-  2.1. network-setup
-  2.1. network-init
-  2.2. vxlan-controller-agent
-  2.2. vpp-u-node
+- ergw-vpp-deployment.yaml
+  - vxlan-controller-agent-init
+  - network-setup
+  - network-init
+  - vxlan-controller-agent
+  - vpp-u-node
 
-3. ergw-cgw-deployment.yaml
-  3.1. vxlan-controller-agent-init
-  3.1. network-init
-  3.2. standby
-  3.2. vxlan-controller-agent
-  3.2. ping-prober
+- ergw-cgw-deployment.yaml
+  - vxlan-controller-agent-init
+  - network-init
+  - standby
+  - vxlan-controller-agent
+  - ping-prober
 
-4. sgsnemu-deployment.yaml
-    4.1. vxlan-controller-agent-init
-    4.1. network-init
-    4.2. vxlan-controller-agent
-    4.2. sgsnemu
+- sgsnemu-deployment.yaml
+    - vxlan-controller-agent-init
+    - network-init
+    - vxlan-controller-agent
+    - sgsnemu
+    - iperf-probe
 
 ## Values.yaml
 
@@ -84,3 +85,77 @@ The overrideable values, their default and description are listed in the table b
 | automode: true         | PDP context will be created on startup.     |
 | listenIP: 172.20.10.155| Local IP of the grx VXLan interface.        |
 | remoteIP: 172.20.10.153| Remote IP of the Cnode grx VXLan interface. |
+
+## Testing PDP context activation with sgsnemu
+Type in `sgsnemu --help` while attached to the sgsnemu-pod to get more info on operating it. The only required fields for a Echo Request are `--remote=<CNode-grx-IP>` and `--listen=<Sgsnemu-grx-IP>`.
+Running the command `sgsnemu --remote=172.20.10.153 --listen=172.20.10.155` should result successfully initiating the GTP library:
+```
+Using default DNS server
+Local IP address is:   172.20.10.155 (172.20.10.155)
+Remote IP address is:  172.20.10.153 (172.20.10.153)
+IMSI is:               240010123456789 (0xf987654321010042)
+Using NSAPI:           0
+Using GTP version:     1
+Using APN:             internet
+Using selection mode:  1
+Using MSISDN:          46702123456
+
+Initialising GTP library
+<000d> gtp.c:757 GTP: gtp_newgsn() started at 172.20.10.155
+<000d> gtp.c:714 State information file (.//gsn_restart) not found. Creating new file.
+Done initialising GTP library
+
+Sending off echo request
+Setting up PDP context #0
+Waiting for response from ggsn........
+
+Received echo response
+Received create PDP context response. IP address: 10.10.155.169
+```
+To open and send all throughput via tun interface `--createif` is required inside a privileged pod. `--conf=/path/` enables to read PDP parameters from a configuration file. A default file sgsn-test.conf is described in a [configmap](https://github.com/KilianDargel/ergw-pgw/blob/master/templates/sgsnemu-configmap.yaml) and mounted to `/mnt/`.
+Running the command `sgsnemu --remote=172.20.10.153 --listen=172.20.10.155 --conf=/mnt/sgsn-test.conf --createif -t v4 --defaultroute` should result in successfully initiating the GTP library, updating the session parameters and setup of the `tun0` interface:
+```
+Using default DNS server
+Local IP address is:   172.20.10.155 (172.20.10.155)
+Remote IP address is:  172.20.10.153 (172.20.10.153)
+IMSI is:               240010123456789 (0xf987654321010042)
+Using NSAPI:           5
+Using GTP version:     1
+Using APN:             travelping
+Using selection mode:  1
+Using RAI:  025.099.46241.207
+->mcc : 025
+->mnc : 099
+->LAC: 46241
+->RAC : 207
+Using MS Time Zone:  0
+->Sign (0=+ / 1=-): 0
+->Number of Quarters of an Hour : 0
+->Daylight Saving Time Adjustment : 0
+->Human Readable MS Time Zone  : GMT + 0 hours 0 minutes
+Using MSISDN:          46702123456
+
+Initialising GTP library
+<000d> gtp.c:757 GTP: gtp_newgsn() started at 172.20.10.155
+Setting up interface
+Done initialising GTP library
+
+Sending off echo request
+Setting up PDP context #0
+Waiting for response from ggsn........
+
+Received echo response
+Received create PDP context response. IP address: 10.10.155.169
+
+/ # ip addr show tun0
+8: tun0: <POINTOPOINT,UP,LOWER_UP> mtu 1500 qdisc pfifo_fast state UNKNOWN qlen 500
+    link/[65534]
+    inet 10.10.155.169/32 scope global tun0
+       valid_lft forever preferred_lft forever
+```
+
+## Testing throughput with iperf.
+`iperf3` requires both a client as well as a server somewhere in the cluster. Containers based on [travelping/nettools](https://github.com/travelping/docker-nettools) can be used for this. Two that are deployed through helm right away are:
+- `iperf-probe` in the sgsnemu-pod can run `iperf3 -c 172.22.16.1 -M 1320 -V` and
+- `standby` in the cgw-pod can run `iperf3 -d -s -B 172.22.16.1` and listen on its sgi0 VXLan address.
+Make sure that the IP of the iperf server is reachable through the GTP tunnel. Sgsnemu will install a default route through the tun interface, which takes care of the interface selection for iperf. Client and server mode can be switched around at will.
