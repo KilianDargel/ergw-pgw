@@ -20,11 +20,12 @@ spec:
         app: {{ template "ergw.name" . }}
         release: {{ .Release.Name }}
         component: sgsnemu
-        vxlan.openvnf.org: "true"
+        {{ .Values.sgsnemu.selector }}: "true"
       annotations:
-        vxlan.openvnf.org/networks: |
+        {{ .Values.sgsnemu.selector }}/networks: |
           {{ .Values.NIC.grx }}
             ip={{ .Values.sgsnemu.listenIP }}/24
+# no hardcode
     spec:
       initContainers:
       - name: vxlan-controller-agent-init
@@ -55,7 +56,7 @@ spec:
         - |
           echo "Running sgsnemu. Type 'sgsnemu --help' for info."
           {{- if .Values.sgsnemu.automode }}
-          sgsnemu --remote={{ .Values.sgsnemu.remoteIP }} --listen={{ .Values.sgsnemu.listenIP }} --conf=/mnt/sgsn-test.conf --createif -t v4 --defaultroute
+          sgsnemu --remote={{ .Values.sgsnemu.remoteIP }} --listen={{$v := .Values.sgsnemu.listenIP | split "/"}}{{$v._0}} --conf=/mnt/sgsn-test.conf --createif -t v4 --defaultroute
           {{- else }}
           echo "Running in manual mode.."
           {{- end }}

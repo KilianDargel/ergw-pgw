@@ -10,7 +10,7 @@ metadata:
     heritage: {{ .Release.Service }}
 data:
   sgsn-test.conf: |
-    imsi 240010123456789
+    imsi {{ .Values.sgsnemu.imsi }}
     qos 0x0b921f
     qose1 0x9396404074f9ffff
     qose2 0x11

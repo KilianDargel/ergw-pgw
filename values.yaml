@@ -75,6 +75,7 @@ VXLan:
 
 sgsnemu:
   automode: false
+  selector: vxlan.openvnf.org
   replicas: 1
   image:
     repository: ergw/sgsnemu
@@ -82,6 +83,7 @@ sgsnemu:
   pullPolicy: IfNotPresent
   listenIP: 172.20.10.155                     # IP of grx NIC
   remoteIP: 172.20.10.153                   # IP of Cnode grx
+  imsi: 240010123456789
 
 Nettools:
   image:
