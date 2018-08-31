@@ -2,7 +2,7 @@
 apiVersion: extensions/v1beta1
 kind: Deployment
 metadata:
-  name: sgsnemu-{{ template "ergw.fullname" . }}
+  name: {{ template "ergw.fullname" . }}
   labels:
     app: {{ template "ergw.name" . }}
     chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
@@ -24,8 +24,7 @@ spec:
       annotations:
         {{ .Values.sgsnemu.selector }}/networks: |
           {{ .Values.NIC.grx }}
-            ip={{ .Values.sgsnemu.listenIP }}/24
-# no hardcode
+            ip={{ .Values.sgsnemu.listenIP }}
     spec:
       initContainers:
       - name: vxlan-controller-agent-init

@@ -81,7 +81,7 @@ sgsnemu:
     repository: ergw/sgsnemu
     tag: master_b1900328f524dd0014ba54c86754ff269aa47cf3
   pullPolicy: IfNotPresent
-  listenIP: 172.20.10.155                     # IP of grx NIC
+  listenIP: 172.20.10.155/24                # IP of grx NIC
   remoteIP: 172.20.10.153                   # IP of Cnode grx
   imsi: 240010123456789
 
